@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>ICU CADPM Risk Prediction System</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .container { margin-top: 30px; }
+        .card { box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 12px; }
+        .form-label { font-weight: 600; }
+        .result { font-size: 1.2rem; margin-top: 15px; }
+        .shap-box { margin-top: 20px; padding: 15px; background: #fff; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        #progress-container { display: none; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <!-- Left form -->
+            <div class="col-md-5">
+                <div class="card p-4">
+                    <h4 class="mb-3 text-primary">Prediction of Mortality Risk from CAD</h4>
+                    <form method="POST" class="row g-3" id="predict-form" autocomplete="off" onsubmit="showProgress()">
+                        {% for feat in feature_names %}
+                        <div class="col-md-6">
+                            <label class="form-label">{{ feat }}</label>
+                            <input type="number" step="any" name="{{ feat }}" class="form-control" required autocomplete="off">
+                        </div>
+                        {% endfor %}
+                        <div class="col-12 text-center">
+                            <button type="submit" class="btn btn-primary px-4">Submit Prediction</button>
+                        </div>
+                        <!-- Progress bar -->
+                        <div class="col-12" id="progress-container">
+                            <div class="progress mt-3">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" role="progressbar" style="width: 100%">
+                                    Calculating, please wait...
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right side -->
+            <div class="col-md-7">
+                <!-- About App Card -->
+                <div class="card p-4 mb-3">
+                    <h4 class="text-primary">About this application</h4>
+                    <p>
+                        This web application uses clinical features to estimate the survival risk of patients with critical coronary artery disease. After inputting the patient data on the left, 
+                        the built-in prediction model will provide the prediction results and SHAP-based explanations.
+                        <br> (The units of all features are as follows)</br>
+                    </p>
+
+                    <!-- Collapsible Feature Units -->
+                    <p>
+                        <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#featureTable" role="button" aria-expanded="false" aria-controls="featureTable">
+                            Show/Hide Feature Units
+                        </a>
+                    </p>
+                    <div class="collapse" id="featureTable">
+                        <div class="card card-body">
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Feature</th>
+                                        <th>Unit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>RDW</td><td>%</td></tr>
+                                    <tr><td>Bun</td><td>mg/dL</td></tr>
+                                    <tr><td>CTI</td><td>index (unitless)</td></tr>
+                                    <tr><td>ALP</td><td>IU/L</td></tr>
+                                    <tr><td>Lymphocytes</td><td>%</td></tr>
+                                    <tr><td>Chloride</td><td>mEq/L</td></tr>
+                                    <tr><td>WBC</td><td>K/uL</td></tr>
+                                    <tr><td>Los_Icu</td><td>days</td></tr>
+                                    <tr><td>RBC</td><td>m/uL</td></tr>
+                                    <tr><td>RR</td><td>insp/min</td></tr>
+                                    <tr><td>APSIII</td><td>score</td></tr>
+                                    <tr><td>Sodium</td><td>g/L</td></tr>
+                                    <tr><td>Platelet</td><td>K/μL</td></tr>
+                                    <tr><td>Phosphate</td><td>mg/dL</td></tr>
+                                    <tr><td>Age</td><td>years</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                {% if prediction %}
+<div class="card p-4 mb-3">
+    <h4 class="text-success">Prediction Result</h4>
+    <p class="result">Predicted Class: <b>{{ prediction }}</b></p>
+
+    <!-- Probability as progress bar -->
+    <label>Death Risk Probability:</label>
+    <div class="progress mb-3">
+        {% set prob = probability|float %}
+        {% if prob < 0.3 %}
+            <div class="progress-bar bg-success" role="progressbar" style="width: {{ prob*100 }}%">
+                {{ "%.2f"|format(prob) }}
+            </div>
+        {% elif prob < 0.6 %}
+            <div class="progress-bar bg-warning" role="progressbar" style="width: {{ prob*100 }}%">
+                {{ "%.2f"|format(prob) }}
+            </div>
+        {% elif prob < 0.8 %}
+            <div class="progress-bar bg-orange" role="progressbar" style="width: {{ prob*100 }}%">
+                {{ "%.2f"|format(prob) }}
+            </div>
+        {% else %}
+            <div class="progress-bar bg-danger" role="progressbar" style="width: {{ prob*100 }}%">
+                {{ "%.2f"|format(prob) }}
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Dynamic advice text -->
+<div class="alert alert-info">
+    {% if prob < 0.3 %}
+        Your predicted <b>mortality risk is low</b>.  
+        The model estimates your probability of death at {{ "%.1f"|format(prob*100) }}%.  
+        Maintain your current healthy habits and continue with regular medical check-ups.
+    {% elif prob < 0.6 %}
+        Your predicted <b>mortality risk is moderate</b>.  
+        The model estimates your probability of death at {{ "%.1f"|format(prob*100) }}%.  
+        Consider improving your lifestyle and keep monitoring your health status regularly.
+    {% else %}
+        Your predicted <b>mortality risk is high</b>.  
+        The model estimates your probability of death at {{ "%.1f"|format(prob*100) }}%.  
+        Please seek medical advice promptly and discuss strategies to reduce your risk.
+    {% endif %}
+</div>
+</div>
+
+                {% endif %}
+
+                {% if shap_html %}
+                <div class="shap-box">
+                    <h5 class="text-secondary">Factors Influencing Your Mortality Risk</h5>
+                    <div>{{ shap_html|safe }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function showProgress() {
+            document.getElementById("progress-container").style.display = "block";
+        }
+    </script>
+</body>
+</html>
